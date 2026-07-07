@@ -12,7 +12,7 @@ router.use(authMiddleware);
 // router.post("/", ctrl.createConversation);
 router.get("/", validate(getAllConversationSchema), ctrl.getAllConversations);
 router.get("/:id", validate(getConversationIdSchema), ctrl.getConversationById);
-router.delete("/:id", validate(renameConversationSchema), ctrl.renameConversation);
+router.patch("/:id", validate(renameConversationSchema), ctrl.renameConversation);
 router.patch("/:id/pin", validate(getConversationIdSchema), ctrl.togglePinConversation);
 router.delete("/:id", validate(getConversationIdSchema), ctrl.deleteConversation);
 
