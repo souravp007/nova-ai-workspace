@@ -16,7 +16,7 @@ import * as conversationService from "../services/conversation.service.js";
 
 export const getAllConversations = asyncHandler(async (req, res) => {
 
-    const conversations = await conversationService.getAllConversations(req.user._id);
+    const conversations = await conversationService.getAllConversations(req.user._id, req.validated.query);
 
     return res.status(200).json({
         success: true,

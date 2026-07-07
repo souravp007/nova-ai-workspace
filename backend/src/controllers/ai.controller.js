@@ -2,15 +2,15 @@ import asyncHandler from "../utils/asyncHandler.js";
 import * as aiService from "../services/ai.service.js";
 
 export const sendMessage = asyncHandler(async (req, res) => {
-
+    const files = req.files || [];
     const { conversationId, message } = req.validated.body;
 
-    const result =
-        await aiService.sendMessage(
-            conversationId,
-            req.user._id,
-            message
-        );
+    const result = await aiService.sendMessage({
+        conversationId,
+        userId: req.user._id,
+        message,
+        files,
+    });
 
     return res.status(200).json({
         success: true,
@@ -21,20 +21,20 @@ export const sendMessage = asyncHandler(async (req, res) => {
 });
 
 export const streamMessage = asyncHandler(async (req, res, next) => {
+    const files = req.files || [];
     const { conversationId, message } = req.validated.body;
 
     res.setHeader("Content-Type", "text/event-stream");
-
     res.setHeader("Cache-Control", "no-cache");
-
     res.setHeader("Connection", "keep-alive");
 
     res.flushHeaders();
 
-    const { conversation, stream } = await aiService.streamMessage({
+    const { conversationId: chatId, stream } = await aiService.streamMessage({
         conversationId,
         userId: req.user._id,
         message,
+        files
     });
 
     let finalResponse = "";
@@ -49,8 +49,7 @@ export const streamMessage = asyncHandler(async (req, res, next) => {
 
         // Optional: get usage if available in final chunk
         if (chunk.usageMetadata) {
-            totalTokens =
-                chunk.usageMetadata.totalTokenCount || 0;
+            totalTokens = chunk.usageMetadata.totalTokenCount || 0;
         }
 
         res.write(
@@ -62,13 +61,10 @@ export const streamMessage = asyncHandler(async (req, res, next) => {
     }
 
     await aiService.saveStreamResponse({
-
-        conversationId: conversation._id,
-
+        conversationId: chatId,
+        userMessage: message,
         response: finalResponse,
-
         tokensUsed: totalTokens,
-
     });
 
     res.write(`event: end\n`);
@@ -76,5 +72,5 @@ export const streamMessage = asyncHandler(async (req, res, next) => {
     res.write(`data: done\n\n`);
 
     res.end();
-})
+});
 

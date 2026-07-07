@@ -1,5 +1,37 @@
 import mongoose from "mongoose";
 
+
+const attachmentSchema = new mongoose.Schema(
+    {
+        url: {
+            type: String,
+            required: true,
+        },
+
+        publicId: {
+            type: String,
+            required: true,
+        },
+
+        type: {
+            type: String,
+            enum: ["image"],
+            required: true,
+        },
+
+        originalName: {
+            type: String,
+        },
+
+        size: {
+            type: Number,
+        },
+    },
+    {
+        _id: false,
+    }
+);
+
 const messageSchema = new mongoose.Schema(
     {
         conversationId: {
@@ -16,10 +48,16 @@ const messageSchema = new mongoose.Schema(
 
         content: {
             type: String,
-            required: true,
             trim: true,
+            default: "",
             maxlength: 50000
         },
+
+        attachment: {
+            type: [attachmentSchema],
+            default: [],
+        },
+
         model: {
             type: String,
             default: "gemini-2.5-flash",

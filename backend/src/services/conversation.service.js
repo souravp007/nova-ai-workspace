@@ -10,12 +10,48 @@ import ApiError from "../utils/ApiError.js";
 //     return conversation;
 // }
 
-export const getAllConversations = async (userId) => {
-    return await Conversation.find({
+export const getAllConversations = async (userId, { page = 1, limit = 10, search = "" }) => {
+
+    const filter = {
         userId,
-    }).sort({
-        updatedAt: -1,
-    });
+    };
+
+    if (search) {
+        filter.title = {
+            $regex: search,
+            $options: "i",
+        };
+
+    }
+
+    const skip = (page - 1) * limit;
+
+    const conversations = await Conversation.find(filter)
+        .select("title lastMessage lastMessageAt isPinned createdAt updatedAt")
+        .sort({
+            isPinned: -1,
+            updatedAt: -1,
+        }).skip(skip).limit(limit);
+
+    const total = await Conversation.countDocuments(filter);
+
+    return {
+
+        conversations,
+
+        pagination: {
+
+            total,
+
+            page,
+
+            limit,
+
+            totalPages:
+                Math.ceil(total / limit),
+
+        },
+    }
 };
 
 

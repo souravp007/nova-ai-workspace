@@ -1,48 +1,101 @@
 import { GoogleGenAI } from "@google/genai";
 import 'dotenv/config';
 import { SYSTEM_PROMPT } from "../constants/ai.constant.js";
+import fs from "fs/promises";
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
 });
 
-export const generateResponse = async (history) => {
+export const generateResponse = async ({
+    history,
+    files = [],
+}) => {
     try {
+
+        const contents = [...history];
+
+        // Attach images to the latest user message
+        if (files.length > 0) {
+
+            const lastIndex = contents.length - 1;
+
+            for (const file of files) {
+
+                const imageBuffer = await fs.readFile(file.path);
+
+                contents[lastIndex].parts.push({
+                    inlineData: {
+                        data: imageBuffer.toString("base64"),
+                        mimeType: file.mimetype,
+                    },
+                });
+
+            }
+
+        }
+
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: history,
+            contents,
             config: {
                 systemInstruction: SYSTEM_PROMPT,
             },
         });
 
-        const metadata = response.usageMetadata;
-
-        console.log(`Prompt Tokens: ${metadata}`);
-
         return {
             text: response.text,
-            usage: metadata.promptTokenCount,
+            usage:
+                response.usageMetadata?.totalTokenCount || 0,
         };
 
     } catch (error) {
-        console.error("Error communicating with Gemini API:", error);
-    }
 
+        console.error("Gemini Error:", error);
+
+        throw error;
+
+    }
 };
 
 
-export const generateStreamResponse = async (history) => {
+export const generateStreamResponse = async ({
+    history,
+    files = [],
+}) => {
 
-    const stream = await ai.models.generateContentStream({
-        model: "gemini-2.5-flash",
-        contents: history,
-        config: {
-            systemInstruction: SYSTEM_PROMPT,
-        },
-    });
+    const contents = [...history];
+
+    if (files.length > 0) {
+
+        const lastIndex = contents.length - 1;
+
+        for (const file of files) {
+
+            const imageBuffer = await fs.readFile(file.path);
+
+            contents[lastIndex].parts.push({
+                inlineData: {
+                    data: imageBuffer.toString("base64"),
+                    mimeType: file.mimetype,
+                },
+            });
+
+        }
+
+    }
+
+    const stream =
+        await ai.models.generateContentStream({
+            model: "gemini-2.5-flash",
+            contents,
+            config: {
+                systemInstruction: SYSTEM_PROMPT,
+            },
+        });
 
     return stream;
+
 };
 
 
@@ -55,8 +108,7 @@ export const generateConversationTitle = async (message) => {
                 role: "user",
                 parts: [
                     {
-                        text: `Generate a short conversation title (maximum 5 words) for: "${message}".
-Return only the title.`,
+                        text: `Generate a short conversation title (maximum 5 words) for: "${message}". Return only the title.`,
                     },
                 ],
             },
@@ -64,4 +116,5 @@ Return only the title.`,
     });
 
     return response.text.trim();
+
 };

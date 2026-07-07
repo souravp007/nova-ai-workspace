@@ -14,8 +14,8 @@ export const chatSchema = z.object({
         message: z
             .string()
             .trim()
-            .min(1, "Message is required")
-            .max(5000),
+            .min(1)
+            .max(5000).optional(),
 
     }),
 });

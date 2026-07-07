@@ -2,103 +2,155 @@ import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
 import ApiError from "../utils/ApiError.js";
 import * as geminiService from "./gemini.service.js";
+import * as cloudinaryService from "./cloudinary.service.js"
+import fs from "fs/promises";
 
 export const sendMessage = async ({
     conversationId,
     userId,
     message,
+    files = [],
 }) => {
 
-    const {
-        conversation,
-        history,
-    } = await prepareConversation({
-        conversationId,
-        userId,
-        message,
-    });
+    try {
 
-    const aiResult =
-        await geminiService.generateResponse(
-            history
-        );
+        const {
 
-    await Message.create({
+            conversation,
 
-        conversationId: conversation._id,
+            history,
 
-        role: "assistant",
+            attachments,
 
-        content: aiResult.text,
+        } = await prepareConversation({
 
-        tokensUsed:
-            aiResult.usage?.totalTokenCount || 0,
+            conversationId,
 
-    });
+            userId,
 
-    conversation.lastMessage =
-        aiResult.text.substring(0, 100);
+            message,
 
-    conversation.lastMessageAt =
-        new Date();
+            files,
 
-    await conversation.save();
+        });
 
-    return {
+        const aiResult = await geminiService.generateResponse({
+            history,
+            attachments,
+        });
 
-        conversationId:
-            conversation._id,
+        if (conversation.title === "New Chat") {
 
-        response:
-            aiResult.text,
+            conversation.title = await geminiService.generateConversationTitle(
+                message || "Image Conversation"
+            );
 
-        tokensUsed:
-            aiResult.usage?.totalTokenCount || 0,
+        }
 
-    };
+        await Message.create({
+
+            conversationId:
+                conversation._id,
+
+            role: "assistant",
+
+            content:
+                aiResult.text,
+
+            tokensUsed:
+                aiResult.usage || 0,
+
+        });
+
+        conversation.lastMessage =
+            aiResult.text.substring(0, 100);
+
+        conversation.lastMessageAt =
+            new Date();
+
+        await conversation.save();
+
+        return {
+            conversationId: conversation._id,
+            response: aiResult.text,
+            tokensUsed: aiResult.usage || 0,
+        };
+
+    } catch (error) {
+        console.log("Error :", error)
+    } finally {
+        for (const file of files) {
+
+            try {
+                await fs.unlink(file.path);
+            } catch (error) {
+                console.error(
+                    `Failed to delete temporary file: ${file.path}`,
+                    error
+                );
+            }
+
+        }
+    }
+
+
 
 };
-
-
 
 
 export const streamMessage = async ({
     conversationId,
     userId,
     message,
+    files = [],
 }) => {
 
     const {
         conversation,
         history,
+        attachments,
     } = await prepareConversation({
         conversationId,
         userId,
         message,
+        files,
     });
 
-    const stream = await geminiService.generateStreamResponse(
-        history
-    );
+    const stream =
+        await geminiService.generateStreamResponse({
+            history,
+            attachments,
+        });
 
     return {
-        conversation,
+        conversationId: conversation._id,
         stream,
+        message,
     };
 
 };
 
 
 export const saveStreamResponse = async ({
-    conversation,
+    conversationId,
+    userMessage,
     response,
     tokensUsed = 0,
 }) => {
 
+    const conversation =
+        await Conversation.findById(conversationId);
+
+    if (!conversation) {
+        throw new ApiError(
+            404,
+            "Conversation not found"
+        );
+    }
+
     await Message.create({
 
-        conversationId:
-            conversation._id,
+        conversationId,
 
         role: "assistant",
 
@@ -107,6 +159,19 @@ export const saveStreamResponse = async ({
         tokensUsed,
 
     });
+
+    /**
+     * Generate Title
+     */
+
+    if (conversation.title === "New Chat") {
+
+        conversation.title =
+            await geminiService.generateConversationTitle(
+                userMessage || "New Chat"
+            );
+
+    }
 
     conversation.lastMessage =
         response.substring(0, 100);
@@ -123,6 +188,7 @@ const prepareConversation = async ({
     conversationId,
     userId,
     message,
+    files = [],
 }) => {
 
     let conversation;
@@ -151,18 +217,57 @@ const prepareConversation = async ({
 
     const activeConversationId = conversation._id;
 
-    // Save User Message
+    /**
+     * Upload Images
+     */
+
+    const attachments = [];
+
+    for (const file of files) {
+
+        const uploaded =
+            await cloudinaryService.uploadImage(file.path);
+
+        attachments.push({
+
+            url: uploaded.url,
+
+            publicId: uploaded.publicId,
+
+            type: "image",
+
+            originalName: file.originalname,
+
+            size: file.size,
+
+        });
+
+    }
+
+    /**
+     * Save User Message
+     */
 
     await Message.create({
+
         conversationId: activeConversationId,
+
         role: "user",
-        content: message,
+
+        content: message || "",
+
+        attachments,
+
     });
 
-    // Last 20 Messages
+    /**
+     * Conversation History
+     */
 
     const messages = await Message.find({
+
         conversationId: activeConversationId,
+
     })
         .sort({
             createdAt: -1,
@@ -171,22 +276,39 @@ const prepareConversation = async ({
 
     messages.reverse();
 
-    const history = messages.map((item) => ({
-        role:
-            item.role === "assistant"
-                ? "model"
-                : "user",
+    const history = messages.map((item) => {
 
-        parts: [
-            {
+        const parts = [];
+
+        if (item.content) {
+
+            parts.push({
                 text: item.content,
-            },
-        ],
-    }));
+            });
+
+        }
+
+        return {
+
+            role:
+                item.role === "assistant"
+                    ? "model"
+                    : "user",
+
+            parts,
+
+        };
+
+    });
 
     return {
+
         conversation,
+
         history,
+
+        attachments: files,
+
     };
 
 };
