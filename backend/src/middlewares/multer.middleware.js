@@ -1,8 +1,16 @@
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 
-const uploadPath = path.join(process.cwd(), "src", "uploads");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const uploadPath = process.env.UPLOAD_PATH
+    ? path.resolve(process.env.UPLOAD_PATH)
+    : process.env.VERCEL
+        ? "/tmp/uploads"
+        : path.resolve(__dirname, "..", "uploads");
 
 // Create uploads folder if it doesn't exist
 if (!fs.existsSync(uploadPath)) {
