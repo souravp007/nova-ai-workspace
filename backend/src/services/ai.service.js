@@ -1,7 +1,7 @@
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
 import ApiError from "../utils/ApiError.js";
-import * as geminiService from "./gemini.service.js";
+import * as groqService from "./groq.service.js";
 import * as cloudinaryService from "./cloudinary.service.js"
 import fs from "fs/promises";
 
@@ -34,14 +34,14 @@ export const sendMessage = async ({
 
         });
 
-        const aiResult = await geminiService.generateResponse({
+        const aiResult = await groqService.generateResponse({
             history,
-            attachments,
+            files: attachments,
         });
 
         if (conversation.title === "New Chat") {
 
-            conversation.title = await geminiService.generateConversationTitle(
+            conversation.title = await groqService.generateConversationTitle(
                 message || "Image Conversation"
             );
 
@@ -56,6 +56,9 @@ export const sendMessage = async ({
 
             content:
                 aiResult.text,
+
+            model:
+                aiResult.model,
 
             tokensUsed:
                 aiResult.usage || 0,
@@ -106,9 +109,9 @@ export const streamMessage = async ({
     });
 
     const stream =
-        await geminiService.generateStreamResponse({
+        await groqService.generateStreamResponse({
             history,
-            attachments,
+            files: attachments,
         });
 
     return {
@@ -156,7 +159,7 @@ export const saveStreamResponse = async ({
     if (conversation.title === "New Chat") {
 
         conversation.title =
-            await geminiService.generateConversationTitle(
+            await groqService.generateConversationTitle(
                 userMessage || "New Chat"
             );
 
@@ -237,7 +240,7 @@ const prepareConversation = async ({
      * Save User Message
      */
 
-    await Message.create({
+        await Message.create({
 
         conversationId: activeConversationId,
 
@@ -245,7 +248,7 @@ const prepareConversation = async ({
 
         content: message || "",
 
-        attachments,
+        attachment: attachments,
 
     });
 
@@ -267,25 +270,9 @@ const prepareConversation = async ({
 
     const history = messages.map((item) => {
 
-        const parts = [];
-
-        if (item.content) {
-
-            parts.push({
-                text: item.content,
-            });
-
-        }
-
         return {
-
-            role:
-                item.role === "assistant"
-                    ? "model"
-                    : "user",
-
-            parts,
-
+            role: item.role,
+            content: item.content || "",
         };
 
     });
