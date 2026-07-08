@@ -79,18 +79,7 @@ export const sendMessage = async ({
     } catch (error) {
         console.log("Error :", error)
     } finally {
-        for (const file of files) {
-
-            try {
-                await fs.unlink(file.path);
-            } catch (error) {
-                console.error(
-                    `Failed to delete temporary file: ${file.path}`,
-                    error
-                );
-            }
-
-        }
+        await cleanupFiles(files);
     }
 
 
@@ -311,4 +300,19 @@ const prepareConversation = async ({
 
     };
 
+};
+
+export const cleanupFiles = async (files = []) => {
+    for (const file of files) {
+
+        try {
+            await fs.unlink(file.path);
+        } catch (error) {
+            console.error(
+                `Failed to delete temporary file: ${file.path}`,
+                error
+            );
+        }
+
+    }
 };

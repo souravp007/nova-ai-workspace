@@ -13,14 +13,14 @@ const suggestions = [
 
 export default function ChatWindow() {
   const dispatch = useDispatch();
-  const { messages, messagesStatus, sendingStatus, error, activeConversationId } = useSelector(
-    (state) => state.chat
-  );
+  const { messages, messagesStatus, sendingStatus, streamingMessageId, error, activeConversationId } =
+    useSelector((state) => state.chat);
   const listRef = useRef(null);
+  const latestContent = messages.map((message) => message.content).join("");
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages.length, sendingStatus]);
+  }, [messages.length, latestContent, sendingStatus]);
 
   useEffect(() => {
     if (sendingStatus === "succeeded") {
@@ -81,7 +81,7 @@ export default function ChatWindow() {
             <MessageBubble key={message._id} message={message} />
           ))}
 
-          {sendingStatus === "loading" ? (
+          {sendingStatus === "loading" && !streamingMessageId ? (
             <div className="flex items-center gap-3 rounded-lg border border-line bg-white/80 p-4 shadow-sm">
               <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-700">
                 <Bot className="h-4 w-4" />

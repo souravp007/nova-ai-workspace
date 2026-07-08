@@ -27,49 +27,74 @@ export const streamMessage = asyncHandler(async (req, res, next) => {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
 
     res.flushHeaders();
 
-    const { conversationId: chatId, stream } = await aiService.streamMessage({
-        conversationId,
-        userId: req.user._id,
-        message,
-        files
-    });
-
-    let finalResponse = "";
-
-    let totalTokens = 0;
-
-    for await (const chunk of stream) {
-
-        const text = chunk.text || "";
-
-        finalResponse += text;
-
-        // Optional: get usage if available in final chunk
-        if (chunk.usageMetadata) {
-            totalTokens = chunk.usageMetadata.totalTokenCount || 0;
-        }
+    try {
+        const { conversationId: chatId, stream } = await aiService.streamMessage({
+            conversationId,
+            userId: req.user._id,
+            message,
+            files
+        });
 
         res.write(
             `data: ${JSON.stringify({
-                text,
+                type: "start",
+                conversationId: chatId,
             })}\n\n`
         );
 
+        let finalResponse = "";
+
+        let totalTokens = 0;
+
+        for await (const chunk of stream) {
+
+            const text = chunk.text || "";
+
+            finalResponse += text;
+
+            // Optional: get usage if available in final chunk
+            if (chunk.usageMetadata) {
+                totalTokens = chunk.usageMetadata.totalTokenCount || 0;
+            }
+
+            res.write(
+                `data: ${JSON.stringify({
+                    type: "chunk",
+                    text,
+                })}\n\n`
+            );
+
+        }
+
+        await aiService.saveStreamResponse({
+            conversationId: chatId,
+            userMessage: message,
+            response: finalResponse,
+            tokensUsed: totalTokens,
+        });
+
+        res.write(`event: end\n`);
+
+        res.write(
+            `data: ${JSON.stringify({
+                type: "end",
+                conversationId: chatId,
+            })}\n\n`
+        );
+    } catch (error) {
+        res.write(`event: error\n`);
+        res.write(
+            `data: ${JSON.stringify({
+                message: error.message || "Stream failed",
+            })}\n\n`
+        );
+    } finally {
+        await aiService.cleanupFiles(files);
     }
-
-    await aiService.saveStreamResponse({
-        conversationId: chatId,
-        userMessage: message,
-        response: finalResponse,
-        tokensUsed: totalTokens,
-    });
-
-    res.write(`event: end\n`);
-
-    res.write(`data: done\n\n`);
 
     res.end();
 });

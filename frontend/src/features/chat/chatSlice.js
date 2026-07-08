@@ -25,9 +25,20 @@ export const fetchMessages = createAsyncThunk("chat/fetchMessages", async (id, t
 
 export const sendMessage = createAsyncThunk("chat/sendMessage", async (payload, thunkApi) => {
   try {
-    const response = await chatService.sendMessage(payload);
+    const assistantId = `assistant-${Date.now()}-${Math.random()}`;
+    const response = await chatService.sendMessage({
+      ...payload,
+      onStart: (conversationId) => {
+        thunkApi.dispatch(streamStarted({ assistantId, conversationId }));
+      },
+      onChunk: (text) => {
+        thunkApi.dispatch(streamChunkReceived({ assistantId, text }));
+      },
+    });
+
     return {
       request: payload,
+      assistantId,
       result: response.data.data,
     };
   } catch (error) {
@@ -85,6 +96,7 @@ const chatSlice = createSlice({
     conversationsStatus: "idle",
     messagesStatus: "idle",
     sendingStatus: "idle",
+    streamingMessageId: null,
     error: null,
     search: "",
   },
@@ -104,6 +116,31 @@ const chatSlice = createSlice({
     },
     clearChatError(state) {
       state.error = null;
+    },
+    streamStarted(state, action) {
+      const { assistantId, conversationId } = action.payload;
+      state.streamingMessageId = assistantId;
+      if (conversationId) {
+        state.activeConversationId = conversationId;
+      }
+
+      const existing = state.messages.find((item) => item._id === assistantId);
+      if (!existing) {
+        state.messages.push({
+          _id: assistantId,
+          role: "assistant",
+          content: "",
+          createdAt: new Date().toISOString(),
+        });
+      }
+    },
+    streamChunkReceived(state, action) {
+      const { assistantId, text } = action.payload;
+      const message = state.messages.find((item) => item._id === assistantId);
+
+      if (message) {
+        message.content += text;
+      }
     },
   },
   extraReducers: (builder) => {
@@ -135,19 +172,28 @@ const chatSlice = createSlice({
       })
       .addCase(sendMessage.pending, (state, action) => {
         state.sendingStatus = "loading";
+        state.streamingMessageId = null;
         state.error = null;
         state.messages.push(makeLocalMessage({ role: "user", content: action.meta.arg.message }));
       })
       .addCase(sendMessage.fulfilled, (state, action) => {
         state.sendingStatus = "succeeded";
-        const { result } = action.payload;
+        state.streamingMessageId = null;
+        const { assistantId, result } = action.payload;
         state.activeConversationId = result.conversationId;
-        state.messages.push(
-          makeLocalMessage({ role: "assistant", content: result.response || "" })
-        );
+
+        const streamedMessage = state.messages.find((item) => item._id === assistantId);
+        if (streamedMessage) {
+          streamedMessage.content = streamedMessage.content || result.response || "";
+        } else {
+          state.messages.push(
+            makeLocalMessage({ role: "assistant", content: result.response || "" })
+          );
+        }
       })
       .addCase(sendMessage.rejected, (state, action) => {
         state.sendingStatus = "failed";
+        state.streamingMessageId = null;
         state.error = action.payload;
       })
       .addCase(renameConversation.fulfilled, (state, action) => {
@@ -172,6 +218,13 @@ const chatSlice = createSlice({
   },
 });
 
-export const { setActiveConversation, startNewChat, setSearch, clearChatError } =
+export const {
+  setActiveConversation,
+  startNewChat,
+  setSearch,
+  clearChatError,
+  streamStarted,
+  streamChunkReceived,
+} =
   chatSlice.actions;
 export default chatSlice.reducer;
