@@ -10,20 +10,36 @@ export const uploadImage = async (filePath) => {
             resource_type: "image",
         });
 
-        // Remove temporary local file
-        // await fs.unlink(filePath);
+        return {
+            url: result.secure_url,
+            publicId: result.public_id,
+        };
+    } catch (error) {
+        try {
+            await fs.unlink(filePath);
+        } catch { }
+
+        throw new ApiError(500, "Failed to upload image.");
+    }
+};
+
+export const uploadFile = async (filePath) => {
+    try {
+        const result = await cloudinary.uploader.upload(filePath, {
+            folder: "nova-ai/files",
+            resource_type: "raw",
+        });
 
         return {
             url: result.secure_url,
             publicId: result.public_id,
         };
     } catch (error) {
-        // Clean up local file if upload fails
         try {
             await fs.unlink(filePath);
         } catch { }
 
-        throw new ApiError(500, "Failed to upload image.");
+        throw new ApiError(500, "Failed to upload file.");
     }
 };
 

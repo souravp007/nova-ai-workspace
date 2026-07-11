@@ -214,42 +214,43 @@ const prepareConversation = async ({
      */
 
     const attachments = [];
+    const imageFiles = [];
 
     for (const file of files) {
-
-        const uploaded =
-            await cloudinaryService.uploadImage(file.path);
+        const isImage = file.mimetype.startsWith("image/");
+        const uploaded = isImage
+            ? await cloudinaryService.uploadImage(file.path)
+            : await cloudinaryService.uploadFile(file.path);
 
         attachments.push({
-
             url: uploaded.url,
-
             publicId: uploaded.publicId,
-
-            type: "image",
-
+            type: isImage ? "image" : "file",
             originalName: file.originalname,
-
             size: file.size,
-
+            mimeType: file.mimetype,
         });
 
+        if (isImage) {
+            imageFiles.push(file);
+        }
     }
 
-    /**
-     * Save User Message
-     */
+    const fileSummary = attachments
+        .filter((attachment) => attachment.type === "file")
+        .map((attachment) => attachment.originalName)
+        .join(", ");
 
-        await Message.create({
+    let userContent = message || "";
+    if (fileSummary) {
+        userContent += `${userContent ? "\n\n" : ""}Attached files: ${fileSummary}`;
+    }
 
+    await Message.create({
         conversationId: activeConversationId,
-
         role: "user",
-
-        content: message || "",
-
+        content: userContent,
         attachment: attachments,
-
     });
 
     /**
@@ -278,13 +279,9 @@ const prepareConversation = async ({
     });
 
     return {
-
         conversation,
-
         history,
-
-        attachments: files,
-
+        attachments: imageFiles,
     };
 
 };

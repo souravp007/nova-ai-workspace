@@ -26,15 +26,45 @@ export const fetchMessages = createAsyncThunk("chat/fetchMessages", async (id, t
 export const sendMessage = createAsyncThunk("chat/sendMessage", async (payload, thunkApi) => {
   try {
     const assistantId = `assistant-${Date.now()}-${Math.random()}`;
+    let streamHasStarted = false;
+    let pendingText = "";
+    let flushTimer = null;
+
+    const flushPendingText = () => {
+      if (!pendingText) return;
+
+      thunkApi.dispatch(streamChunkReceived({ assistantId, text: pendingText }));
+      pendingText = "";
+      flushTimer = null;
+    };
+
+    const scheduleChunkFlush = () => {
+      if (flushTimer) return;
+
+      flushTimer = window.setTimeout(flushPendingText, 32);
+    };
+
     const response = await chatService.sendMessage({
       ...payload,
       onStart: (conversationId) => {
+        if (streamHasStarted) return;
+        streamHasStarted = true;
         thunkApi.dispatch(streamStarted({ assistantId, conversationId }));
       },
       onChunk: (text) => {
-        thunkApi.dispatch(streamChunkReceived({ assistantId, text }));
+        if (!streamHasStarted) {
+          streamHasStarted = true;
+          thunkApi.dispatch(streamStarted({ assistantId }));
+        }
+        pendingText += text;
+        scheduleChunkFlush();
       },
     });
+
+    if (flushTimer) {
+      window.clearTimeout(flushTimer);
+    }
+    flushPendingText();
 
     return {
       request: payload,
